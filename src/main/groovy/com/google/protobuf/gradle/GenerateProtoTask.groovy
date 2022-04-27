@@ -29,6 +29,8 @@
  */
 package com.google.protobuf.gradle
 
+import org.gradle.api.tasks.InputFile
+
 import static java.nio.charset.StandardCharsets.US_ASCII
 
 import com.google.common.base.Preconditions
@@ -330,8 +332,41 @@ public abstract class GenerateProtoTask extends DefaultTask {
   @Internal("Input captured by getAlternativePaths(), this is used to query alternative path by locator name.")
   abstract MapProperty<String, FileCollection> getLocatorToAlternativePathsMapping()
 
-  @InputFiles
-  @PathSensitive(PathSensitivity.NONE)
+  @Input
+  @Optional
+  Provider<String> getProtocArtifact() {
+    // Ideally, this value could be mapped from the protocLocator property, but Provider#map cannot return null in
+    // Gradle < 6.2. See https://github.com/gradle/gradle/issues/11979
+    def provider = providerFactory.provider {
+      def protocArtifact = protocLocator.get().artifact
+      if (protocArtifact) {
+        def (groupId, artifact, version) = ToolsLocator.artifactParts(protocArtifact)
+        "$groupId:$artifact:$version".toString()
+      } else {
+        null
+      }
+    }
+
+    outputs.upToDateWhen {
+      !provider.getOrElse("").endsWith("-SNAPSHOT")
+    }
+
+    provider
+  }
+
+  @InputFile
+  @PathSensitive(PathSensitivity.ABSOLUTE)
+  @Optional
+  Provider<File> getProtocPath() {
+    // Ideally, this value could be mapped from the protocLocator property, but Provider#map cannot return null in
+    // Gradle < 6.2. See https://github.com/gradle/gradle/issues/11979
+    return providerFactory.provider {
+      def path = getProtocLocator().get().path
+      path ? new File(path) : null
+    }
+  }
+
+  @Internal
   ConfigurableFileCollection getAlternativePaths() {
     return objectFactory.fileCollection().from(getLocatorToAlternativePathsMapping().get().values())
   }
